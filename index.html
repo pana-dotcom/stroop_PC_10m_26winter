@@ -1,0 +1,2215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Stroop test</title>
+
+<style>
+body {
+  font-family: sans-serif;
+  text-align: center;
+  margin-top: 50px;
+}
+
+#title {
+  font-size: 36px;
+}
+
+#instruction {
+  font-size: 28px;
+  font-weight: bold;
+}
+
+#guide {
+  margin-top: 15px;
+  font-size: 32px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+/*
+刺激表示領域の高さを固定します。
+
+注視点、漢字、中立刺激のどれを表示しても、
+下にある回答ボックスの位置は変化しません。
+*/
+#word {
+  width: 100%;
+  height: 80px;
+  margin: 40px auto;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-family: sans-serif;
+  font-size: 64px;
+  font-weight: normal;
+  line-height: 1;
+
+  box-sizing: border-box;
+}
+
+#message {
+  margin-top: 20px;
+  font-size: 24px;
+  font-weight: bold;
+  min-height: 50px;
+}
+
+#keymap {
+  margin-top: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.arrow-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.keybox {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  width: 90px;
+  height: 90px;
+  margin: 5px;
+
+  border: 3px solid #333;
+  border-radius: 10px;
+
+  font-size: 30px;
+  font-weight: bold;
+}
+
+/*
+ページ読み込み直後はすべて非表示にし、
+JavaScriptで必要な要素だけ表示します。
+*/
+#title,
+#instruction,
+#word,
+#guide,
+#message,
+#keymap {
+  display: none;
+}
+</style>
+</head>
+
+<body>
+
+<h1 id="title">Stroopテスト</h1>
+
+<p id="instruction">
+  色を回答！
+</p>
+
+<div>
+  <div id="word"></div>
+
+  <div id="guide">
+    ↑：赤　/　←：青　/　→：緑　/　↓：黄
+  </div>
+
+  <div id="message"></div>
+</div>
+
+<div id="keymap">
+
+  <div class="arrow-row">
+    <div class="keybox">赤</div>
+  </div>
+
+  <div class="arrow-row">
+    <div class="keybox">青</div>
+    <div class="keybox">黄</div>
+    <div class="keybox">緑</div>
+  </div>
+
+</div>
+
+<script>
+"use strict";
+
+/*
+==================================================
+条件番号
+==================================================
+
+1：一致試行
+2：不一致試行
+3：中立試行
+
+==================================================
+Code
+==================================================
+
+1：正答（有効）
+2：誤答（有効）
+3：対象外（早期）
+4：対象外（無反応）
+5：対象外（重複）
+
+==================================================
+反応判定
+==================================================
+
+0～100 ms：
+Code 3、対象外（早期）
+
+100 ms超～2,000 ms以下、かつ正解：
+Code 1、正答（有効）
+
+100 ms超～2,000 ms以下、かつ誤答：
+Code 2、誤答（有効）
+
+2,000 ms以内に押下なし：
+Code 4、対象外（無反応）
+
+代表反応後の追加押下：
+Code 5、対象外（重複）
+
+※ 100 msちょうどはCode 3です。
+※ 最初の矢印キー入力を代表反応とします。
+*/
+
+
+/*
+==================================================
+刺激と回答キー
+==================================================
+*/
+
+const texts = [
+  "赤",
+  "青",
+  "緑",
+  "黄"
+];
+
+const colors = [
+  "red",
+  "blue",
+  "green",
+  "gold"
+];
+
+const keyMap = {
+  arrowup: "red",
+  arrowleft: "blue",
+  arrowright: "green",
+  arrowdown: "gold"
+};
+
+
+/*
+==================================================
+時間設定
+==================================================
+*/
+
+// 全試行数
+const TOTAL_TRIALS = 226;
+
+// Enterキー押下後の待機時間：30秒
+const INITIAL_WAIT_DURATION = 30000;
+
+// カウントダウン開始：タスク開始5秒前
+const PRE_START_SOUND_TIME = 25000;
+
+// タスク開始直後と各試行間の注視点：500 ms
+const FIXATION_DURATION = 500;
+
+// 刺激提示時間：2,000 ms
+const STIMULUS_DURATION = 2000;
+
+
+/*
+==================================================
+ブロックごとの条件数
+==================================================
+*/
+
+const blockSettings = [
+  {
+    size: 28,
+    counts: {
+      1: 7,
+      2: 14,
+      3: 7
+    }
+  },
+  {
+    size: 28,
+    counts: {
+      1: 7,
+      2: 14,
+      3: 7
+    }
+  },
+  {
+    size: 28,
+    counts: {
+      1: 7,
+      2: 14,
+      3: 7
+    }
+  },
+  {
+    size: 29,
+    counts: {
+      1: 7,
+      2: 15,
+      3: 7
+    }
+  },
+
+  {
+    size: 28,
+    counts: {
+      1: 7,
+      2: 14,
+      3: 7
+    }
+  },
+  {
+    size: 28,
+    counts: {
+      1: 7,
+      2: 14,
+      3: 7
+    }
+  },
+  {
+    size: 28,
+    counts: {
+      1: 7,
+      2: 14,
+      3: 7
+    }
+  },
+  {
+    size: 29,
+    counts: {
+      1: 8,
+      2: 14,
+      3: 7
+    }
+  }
+];
+
+
+/*
+==================================================
+実験中に使用する変数
+==================================================
+*/
+
+let trialSequence = [];
+let trialIndex = 0;
+
+let currentTrial = null;
+let stimulusStartTime = null;
+
+let isWaiting = false;
+let isRunning = false;
+let audioUnlocked = false;
+
+let stimulusVisible = false;
+let firstResponseRecorded = false;
+
+let initialWaitTimer = null;
+let preStartSoundTimer = null;
+let countdownTimer = null;
+let fixationTimer = null;
+let stimulusTimer = null;
+
+let csvLog = [];
+let pendingDuplicateResponses = [];
+
+let taskStartDate = null;
+let taskEndDate = null;
+
+let audioContext = null;
+
+
+/*
+==================================================
+画面表示
+==================================================
+*/
+
+function hideAllScreenElements() {
+  document.getElementById("title").style.display =
+    "none";
+
+  document.getElementById("instruction").style.display =
+    "none";
+
+  document.getElementById("word").style.display =
+    "none";
+
+  document.getElementById("guide").style.display =
+    "none";
+
+  document.getElementById("message").style.display =
+    "none";
+
+  document.getElementById("keymap").style.display =
+    "none";
+}
+
+
+/*
+初期画面
+
+表示内容：
+「Enterキーを押して待機を開始してください」のみ
+*/
+
+function showInitialScreen() {
+  hideAllScreenElements();
+
+  const message =
+    document.getElementById("message");
+
+  message.textContent =
+    "Enterキーを押して待機を開始してください";
+
+  message.style.display =
+    "block";
+
+  message.style.fontSize =
+    "32px";
+
+  message.style.fontWeight =
+    "bold";
+
+  message.style.marginTop =
+    "180px";
+}
+
+
+/*
+30秒待機画面
+
+表示内容：
+・Stroopテスト
+・注視点
+・開始まで注視点を見て待機してください
+*/
+
+function showWaitingScreen() {
+  hideAllScreenElements();
+
+  const title =
+    document.getElementById("title");
+
+  const word =
+    document.getElementById("word");
+
+  const message =
+    document.getElementById("message");
+
+  title.style.display =
+    "block";
+
+  word.style.display =
+    "flex";
+
+  setWordAppearance();
+
+  word.textContent =
+    "✖";
+
+  word.style.color =
+    "black";
+
+  message.style.display =
+    "block";
+
+  message.textContent =
+    "開始まで注視点を見て待機してください";
+
+  message.style.fontSize =
+    "24px";
+
+  message.style.fontWeight =
+    "bold";
+
+  message.style.marginTop =
+    "20px";
+}
+
+
+/*
+タスク画面
+*/
+
+function showTaskScreen() {
+  hideAllScreenElements();
+
+  document.getElementById(
+    "title"
+  ).style.display = "block";
+
+  const wordDiv =
+    document.getElementById(
+      "word"
+    );
+
+  /*
+  #wordはFlexboxとして表示します。
+  blockにすると中央配置の設定が無効になるため、
+  必ずflexを使用します。
+  */
+  wordDiv.style.display =
+    "flex";
+
+  setWordAppearance();
+
+  document.getElementById(
+    "keymap"
+  ).style.display = "flex";
+}
+
+
+/*
+エラー画面
+*/
+
+function showErrorScreen(
+  errorMessage
+) {
+  hideAllScreenElements();
+
+  const message =
+    document.getElementById(
+      "message"
+    );
+
+  message.style.display =
+    "block";
+
+  message.style.fontSize =
+    "24px";
+
+  message.style.marginTop =
+    "180px";
+
+  message.textContent =
+    errorMessage;
+}
+
+
+/*
+==================================================
+刺激・注視点の見た目を統一
+==================================================
+
+以前のコードと同じ
+sans-serif、64pxで表示します。
+*/
+
+function setWordAppearance() {
+  const wordDiv =
+    document.getElementById(
+      "word"
+    );
+
+  wordDiv.style.fontFamily =
+    "sans-serif";
+
+  wordDiv.style.fontSize =
+    "64px";
+
+  wordDiv.style.fontWeight =
+    "normal";
+
+  wordDiv.style.lineHeight =
+    "1";
+}
+
+
+/*
+==================================================
+音声機能
+==================================================
+*/
+
+function getAudioContext() {
+  if (audioContext === null) {
+    const AudioContextClass =
+      window.AudioContext ||
+      window.webkitAudioContext;
+
+    if (AudioContextClass) {
+      audioContext =
+        new AudioContextClass();
+    }
+  }
+
+  return audioContext;
+}
+
+
+async function unlockAudio() {
+  const context =
+    getAudioContext();
+
+  if (!context) {
+    throw new Error(
+      "このブラウザでは音声機能を利用できません。"
+    );
+  }
+
+  if (
+    context.state !== "running"
+  ) {
+    await context.resume();
+  }
+
+  /*
+  ほぼ無音の短い音で、
+  音声機能を有効化します。
+  */
+  const oscillator =
+    context.createOscillator();
+
+  const gain =
+    context.createGain();
+
+  gain.gain.setValueAtTime(
+    0.0001,
+    context.currentTime
+  );
+
+  oscillator.connect(gain);
+  gain.connect(
+    context.destination
+  );
+
+  oscillator.start(
+    context.currentTime
+  );
+
+  oscillator.stop(
+    context.currentTime + 0.02
+  );
+}
+
+
+/*
+2-backと同じ音を再生します。
+*/
+
+async function playTone(
+  frequency,
+  durationMs,
+  volume = 0.22
+) {
+  try {
+    const context =
+      getAudioContext();
+
+    if (!context) {
+      return false;
+    }
+
+    if (
+      context.state !== "running"
+    ) {
+      await context.resume();
+    }
+
+    const oscillator =
+      context.createOscillator();
+
+    const gain =
+      context.createGain();
+
+    const now =
+      context.currentTime;
+
+    const duration =
+      durationMs / 1000;
+
+    const attack =
+      Math.min(
+        0.08,
+        duration * 0.25
+      );
+
+    const release =
+      Math.min(
+        0.22,
+        duration * 0.45
+      );
+
+    oscillator.type =
+      "sine";
+
+    oscillator.frequency.setValueAtTime(
+      frequency,
+      now
+    );
+
+    gain.gain.setValueAtTime(
+      0.0001,
+      now
+    );
+
+    gain.gain.exponentialRampToValueAtTime(
+      volume,
+      now + attack
+    );
+
+    gain.gain.setValueAtTime(
+      volume,
+      now + Math.max(
+        attack,
+        duration - release
+      )
+    );
+
+    gain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      now + duration
+    );
+
+    oscillator.connect(gain);
+    gain.connect(
+      context.destination
+    );
+
+    oscillator.start(now);
+
+    oscillator.stop(
+      now + duration
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
+}
+
+
+/*
+==================================================
+配列をシャッフル
+==================================================
+*/
+
+function shuffle(array) {
+  const copied =
+    [...array];
+
+  for (
+    let i = copied.length - 1;
+    i > 0;
+    i--
+  ) {
+    const j =
+      Math.floor(
+        Math.random() *
+        (i + 1)
+      );
+
+    [
+      copied[i],
+      copied[j]
+    ] = [
+      copied[j],
+      copied[i]
+    ];
+  }
+
+  return copied;
+}
+
+
+/*
+同じ値が4連続するか確認します。
+*/
+
+function wouldMakeFourConsecutive(
+  array,
+  value
+) {
+  if (
+    array.length < 3
+  ) {
+    return false;
+  }
+
+  return (
+    array[array.length - 1] === value &&
+    array[array.length - 2] === value &&
+    array[array.length - 3] === value
+  );
+}
+
+
+/*
+==================================================
+条件系列を生成
+==================================================
+*/
+
+function generateConditionSequence() {
+  const completeSequence = [];
+
+  for (
+    const block
+    of blockSettings
+  ) {
+    let selectedBlock =
+      null;
+
+    for (
+      let attempt = 0;
+      attempt < 10000;
+      attempt++
+    ) {
+      const candidate = [];
+
+      for (
+        let i = 0;
+        i < block.counts[1];
+        i++
+      ) {
+        candidate.push(1);
+      }
+
+      for (
+        let i = 0;
+        i < block.counts[2];
+        i++
+      ) {
+        candidate.push(2);
+      }
+
+      for (
+        let i = 0;
+        i < block.counts[3];
+        i++
+      ) {
+        candidate.push(3);
+      }
+
+      const shuffledCandidate =
+        shuffle(candidate);
+
+      const combined = [
+        ...completeSequence,
+        ...shuffledCandidate
+      ];
+
+      let valid = true;
+
+      for (
+        let i = 3;
+        i < combined.length;
+        i++
+      ) {
+        if (
+          combined[i] ===
+            combined[i - 1] &&
+          combined[i] ===
+            combined[i - 2] &&
+          combined[i] ===
+            combined[i - 3]
+        ) {
+          valid = false;
+          break;
+        }
+      }
+
+      if (valid) {
+        selectedBlock =
+          shuffledCandidate;
+
+        break;
+      }
+    }
+
+    if (
+      selectedBlock === null
+    ) {
+      throw new Error(
+        "条件系列を生成できませんでした。"
+      );
+    }
+
+    completeSequence.push(
+      ...selectedBlock
+    );
+  }
+
+  return completeSequence;
+}
+
+
+/*
+==================================================
+条件に応じた刺激候補を作成
+==================================================
+*/
+
+function makeStimulusCandidates(
+  condition
+) {
+  const candidates = [];
+
+  /*
+  条件1：一致試行
+  */
+  if (condition === 1) {
+    for (
+      let i = 0;
+      i < colors.length;
+      i++
+    ) {
+      candidates.push({
+        condition: 1,
+        text: texts[i],
+        color: colors[i],
+        stimulusId:
+          texts[i] +
+          "_" +
+          colors[i]
+      });
+    }
+  }
+
+  /*
+  条件2：不一致試行
+  */
+  if (condition === 2) {
+    for (
+      let textIndex = 0;
+      textIndex <
+        texts.length;
+      textIndex++
+    ) {
+      for (
+        let colorIndex = 0;
+        colorIndex <
+          colors.length;
+        colorIndex++
+      ) {
+        if (
+          textIndex !==
+          colorIndex
+        ) {
+          candidates.push({
+            condition: 2,
+            text:
+              texts[textIndex],
+            color:
+              colors[colorIndex],
+            stimulusId:
+              texts[textIndex] +
+              "_" +
+              colors[colorIndex]
+          });
+        }
+      }
+    }
+  }
+
+  /*
+  条件3：中立試行
+  */
+  if (condition === 3) {
+    for (
+      let i = 0;
+      i < colors.length;
+      i++
+    ) {
+      candidates.push({
+        condition: 3,
+        text: "●",
+        color: colors[i],
+        stimulusId:
+          "●_" +
+          colors[i]
+      });
+    }
+  }
+
+  return candidates;
+}
+
+
+/*
+==================================================
+刺激系列を生成
+==================================================
+*/
+
+function generateTrialSequence() {
+  for (
+    let sequenceAttempt = 0;
+    sequenceAttempt < 1000;
+    sequenceAttempt++
+  ) {
+    const conditionSequence =
+      generateConditionSequence();
+
+    const generatedTrials = [];
+
+    let failed = false;
+
+    for (
+      const condition
+      of conditionSequence
+    ) {
+      const candidates =
+        shuffle(
+          makeStimulusCandidates(
+            condition
+          )
+        );
+
+      let selectedStimulus =
+        null;
+
+      for (
+        const candidate
+        of candidates
+      ) {
+        const previousTrial =
+          generatedTrials.length > 0
+            ? generatedTrials[
+                generatedTrials.length - 1
+              ]
+            : null;
+
+        /*
+        完全に同一の刺激の連続を禁止
+        */
+        if (
+          previousTrial !== null &&
+          previousTrial.stimulusId ===
+            candidate.stimulusId
+        ) {
+          continue;
+        }
+
+        /*
+        同一正解色の4連続を禁止
+        */
+        const previousColors =
+          generatedTrials.map(
+            trial =>
+              trial.color
+          );
+
+        if (
+          wouldMakeFourConsecutive(
+            previousColors,
+            candidate.color
+          )
+        ) {
+          continue;
+        }
+
+        selectedStimulus =
+          candidate;
+
+        break;
+      }
+
+      if (
+        selectedStimulus === null
+      ) {
+        failed = true;
+        break;
+      }
+
+      generatedTrials.push(
+        selectedStimulus
+      );
+    }
+
+    if (
+      !failed &&
+      generatedTrials.length ===
+        TOTAL_TRIALS
+    ) {
+      validateSequence(
+        generatedTrials
+      );
+
+      return generatedTrials;
+    }
+  }
+
+  throw new Error(
+    "刺激系列を生成できませんでした。"
+  );
+}
+
+
+/*
+==================================================
+条件数を数える
+==================================================
+*/
+
+function countConditions(
+  sequence
+) {
+  const counts = {
+    1: 0,
+    2: 0,
+    3: 0
+  };
+
+  sequence.forEach(
+    trial => {
+      counts[
+        trial.condition
+      ]++;
+    }
+  );
+
+  return counts;
+}
+
+
+/*
+==================================================
+生成した系列を検証
+==================================================
+*/
+
+function validateSequence(
+  sequence
+) {
+  if (
+    sequence.length !==
+    TOTAL_TRIALS
+  ) {
+    throw new Error(
+      "総試行数が226回ではありません。"
+    );
+  }
+
+  let startIndex = 0;
+
+  blockSettings.forEach(
+    (
+      block,
+      blockIndex
+    ) => {
+      const blockTrials =
+        sequence.slice(
+          startIndex,
+          startIndex +
+            block.size
+        );
+
+      const counts =
+        countConditions(
+          blockTrials
+        );
+
+      if (
+        counts[1] !==
+          block.counts[1] ||
+        counts[2] !==
+          block.counts[2] ||
+        counts[3] !==
+          block.counts[3]
+      ) {
+        throw new Error(
+          "ブロック" +
+          (blockIndex + 1) +
+          "の条件数が不正です。"
+        );
+      }
+
+      if (
+        counts[1] < 5 ||
+        counts[1] > 9 ||
+        counts[2] < 12 ||
+        counts[2] > 16 ||
+        counts[3] < 5 ||
+        counts[3] > 9
+      ) {
+        throw new Error(
+          "ブロック" +
+          (blockIndex + 1) +
+          "の条件数が指定範囲外です。"
+        );
+      }
+
+      startIndex +=
+        block.size;
+    }
+  );
+
+  for (
+    let i = 1;
+    i < sequence.length;
+    i++
+  ) {
+    /*
+    同一刺激の連続
+    */
+    if (
+      sequence[i]
+        .stimulusId ===
+      sequence[i - 1]
+        .stimulusId
+    ) {
+      throw new Error(
+        "同一刺激の連続が検出されました。"
+      );
+    }
+
+    if (i >= 3) {
+      /*
+      同一条件4連続
+      */
+      if (
+        sequence[i]
+          .condition ===
+          sequence[i - 1]
+            .condition &&
+        sequence[i]
+          .condition ===
+          sequence[i - 2]
+            .condition &&
+        sequence[i]
+          .condition ===
+          sequence[i - 3]
+            .condition
+      ) {
+        throw new Error(
+          "同一条件の4連続が検出されました。"
+        );
+      }
+
+      /*
+      同一正解色4連続
+      */
+      if (
+        sequence[i].color ===
+          sequence[i - 1].color &&
+        sequence[i].color ===
+          sequence[i - 2].color &&
+        sequence[i].color ===
+          sequence[i - 3].color
+      ) {
+        throw new Error(
+          "同一正解色の4連続が検出されました。"
+        );
+      }
+    }
+  }
+
+  const firstHalf =
+    countConditions(
+      sequence.slice(
+        0,
+        113
+      )
+    );
+
+  if (
+    firstHalf[1] !== 28 ||
+    firstHalf[2] !== 57 ||
+    firstHalf[3] !== 28
+  ) {
+    throw new Error(
+      "前半113試行の条件数が不正です。"
+    );
+  }
+
+  const secondHalf =
+    countConditions(
+      sequence.slice(
+        113,
+        226
+      )
+    );
+
+  if (
+    secondHalf[1] !== 29 ||
+    secondHalf[2] !== 56 ||
+    secondHalf[3] !== 28
+  ) {
+    throw new Error(
+      "後半113試行の条件数が不正です。"
+    );
+  }
+}
+
+
+/*
+==================================================
+Enterキーによる音声制限解除
+==================================================
+*/
+
+document.addEventListener(
+  "keydown",
+  handleInitialEnter
+);
+
+function handleInitialEnter(
+  event
+) {
+  if (
+    event.key !== "Enter" ||
+    event.repeat ||
+    audioUnlocked ||
+    isWaiting ||
+    isRunning
+  ) {
+    return;
+  }
+
+  event.preventDefault();
+
+  unlockAudio()
+    .then(() => {
+      audioUnlocked = true;
+
+      document.removeEventListener(
+        "keydown",
+        handleInitialEnter
+      );
+
+      beginInitialWaiting();
+    })
+    .catch(error => {
+      console.error(error);
+
+      const message =
+        document.getElementById(
+          "message"
+        );
+
+      message.textContent =
+        "音声を有効にできませんでした。もう一度Enterキーを押してください。";
+    });
+}
+
+
+/*
+==================================================
+開始5秒前からカウントダウン
+==================================================
+*/
+
+function startCountdown() {
+  let remainingSeconds = 5;
+
+  const message =
+    document.getElementById(
+      "message"
+    );
+
+  /*
+  2-backと同じ開始5秒前の音
+  */
+  void playTone(
+    659.25,
+    500,
+    0.20
+  );
+
+  message.textContent =
+    String(
+      remainingSeconds
+    );
+
+  message.style.fontSize =
+    "42px";
+
+  countdownTimer =
+    setInterval(
+      () => {
+        remainingSeconds--;
+
+        if (
+          remainingSeconds >= 1
+        ) {
+          message.textContent =
+            String(
+              remainingSeconds
+            );
+        } else {
+          clearInterval(
+            countdownTimer
+          );
+
+          countdownTimer = null;
+          message.textContent =
+            "";
+        }
+      },
+      1000
+    );
+}
+
+
+/*
+==================================================
+30秒間の待機を開始
+==================================================
+*/
+
+function beginInitialWaiting() {
+  try {
+    trialSequence =
+      generateTrialSequence();
+
+  } catch (error) {
+    console.error(error);
+
+    showErrorScreen(
+      "系列の生成に失敗しました。ページを再読み込みしてください。"
+    );
+
+    return;
+  }
+
+  isWaiting = true;
+
+  trialIndex = 0;
+  csvLog = [];
+  pendingDuplicateResponses =
+    [];
+
+  currentTrial = null;
+
+  taskStartDate = null;
+  taskEndDate = null;
+
+  showWaitingScreen();
+
+  /*
+  25秒後、開始5秒前に
+  音とカウントダウンを開始
+  */
+  preStartSoundTimer =
+    setTimeout(
+      () => {
+        if (!isWaiting) {
+          return;
+        }
+
+        startCountdown();
+      },
+      PRE_START_SOUND_TIME
+    );
+
+  /*
+  30秒後にタスクを自動開始
+  */
+  initialWaitTimer =
+    setTimeout(
+      startTask,
+      INITIAL_WAIT_DURATION
+    );
+}
+
+
+/*
+==================================================
+タスク開始
+==================================================
+*/
+
+function startTask() {
+  if (!isWaiting) {
+    return;
+  }
+
+  isWaiting = false;
+  isRunning = true;
+
+  if (
+    countdownTimer !== null
+  ) {
+    clearInterval(
+      countdownTimer
+    );
+
+    countdownTimer =
+      null;
+  }
+
+  trialIndex = 0;
+  currentTrial = null;
+
+  stimulusVisible = false;
+  firstResponseRecorded =
+    false;
+
+  /*
+  2-backと同じ開始音
+  */
+  void playTone(
+    880,
+    600,
+    0.22
+  );
+
+  /*
+  開始音を鳴らし、最初の注視点を
+  開始した時刻を記録します。
+  */
+  taskStartDate =
+    new Date();
+
+  showTaskScreen();
+
+  /*
+  テスト開始直後は、
+  注視点500 msから開始します。
+  */
+  showFixation();
+}
+
+
+/*
+==================================================
+注視点
+==================================================
+*/
+
+function showFixation() {
+  if (!isRunning) {
+    return;
+  }
+
+  if (
+    trialIndex >=
+    TOTAL_TRIALS
+  ) {
+    endTest();
+    return;
+  }
+
+  const wordDiv =
+    document.getElementById(
+      "word"
+    );
+
+  setWordAppearance();
+
+  wordDiv.textContent =
+    "✖";
+
+  wordDiv.style.color =
+    "black";
+
+  stimulusVisible = false;
+  firstResponseRecorded =
+    false;
+
+  currentTrial = null;
+
+  fixationTimer =
+    setTimeout(
+      showStimulus,
+      FIXATION_DURATION
+    );
+}
+
+
+/*
+==================================================
+刺激提示
+==================================================
+*/
+
+function showStimulus() {
+  if (!isRunning) {
+    return;
+  }
+
+  currentTrial =
+    trialSequence[
+      trialIndex
+    ];
+
+  firstResponseRecorded =
+    false;
+
+  currentTrial.firstRT =
+    "";
+
+  currentTrial.firstAnswer =
+    "";
+
+  currentTrial.correct =
+    0;
+
+  currentTrial.code =
+    4;
+
+  const wordDiv =
+    document.getElementById(
+      "word"
+    );
+
+  requestAnimationFrame(
+    () => {
+      /*
+      条件1、2、3のすべてを
+      以前と同じ64pxで表示します。
+      */
+      setWordAppearance();
+
+      wordDiv.textContent =
+        currentTrial.text;
+
+      wordDiv.style.color =
+        currentTrial.color;
+
+      stimulusStartTime =
+        performance.now();
+
+      recordPendingDuplicateResponses(
+        stimulusStartTime
+      );
+
+      stimulusVisible =
+        true;
+
+      stimulusTimer =
+        setTimeout(
+          finishCurrentTrial,
+          STIMULUS_DURATION
+        );
+    }
+  );
+}
+
+
+/*
+==================================================
+追加押下を記録
+==================================================
+*/
+
+function recordPendingDuplicateResponses(
+  nextStimulusTime
+) {
+  pendingDuplicateResponses.forEach(
+    response => {
+      const negativeRT =
+        Math.round(
+          response.pressTime -
+          nextStimulusTime
+        );
+
+      csvLog.push({
+        type:
+          "duplicate",
+        trial: "",
+        condition:
+          response.condition,
+        rt:
+          negativeRT,
+        code: 5,
+        correct: "",
+        sortTime:
+          response.pressTime
+      });
+    }
+  );
+
+  pendingDuplicateResponses =
+    [];
+}
+
+
+/*
+==================================================
+矢印キー入力
+==================================================
+*/
+
+document.addEventListener(
+  "keydown",
+  event => {
+    if (
+      !isRunning ||
+      !stimulusVisible
+    ) {
+      return;
+    }
+
+    if (event.repeat) {
+      return;
+    }
+
+    const key =
+      event.key.toLowerCase();
+
+    if (
+      !(key in keyMap)
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const answerColor =
+      keyMap[key];
+
+    const pressTime =
+      performance.now();
+
+    const rt =
+      Math.round(
+        pressTime -
+        stimulusStartTime
+      );
+
+    if (
+      rt < 0 ||
+      rt >
+        STIMULUS_DURATION
+    ) {
+      return;
+    }
+
+    /*
+    最初の押下
+    */
+    if (
+      !firstResponseRecorded
+    ) {
+      firstResponseRecorded =
+        true;
+
+      currentTrial.firstRT =
+        rt;
+
+      currentTrial.firstAnswer =
+        answerColor;
+
+      currentTrial.correct =
+        answerColor ===
+        currentTrial.color
+          ? 1
+          : 0;
+
+      if (rt <= 100) {
+        currentTrial.code =
+          3;
+      } else if (
+        currentTrial.correct ===
+        1
+      ) {
+        currentTrial.code =
+          1;
+      } else {
+        currentTrial.code =
+          2;
+      }
+    }
+
+    /*
+    2回目以降の押下
+    */
+    else {
+      pendingDuplicateResponses.push({
+        pressTime:
+          pressTime,
+        condition:
+          currentTrial.condition
+      });
+    }
+  }
+);
+
+
+/*
+==================================================
+現在の試行を終了
+==================================================
+*/
+
+function finishCurrentTrial() {
+  if (
+    !isRunning ||
+    currentTrial === null
+  ) {
+    return;
+  }
+
+  stimulusVisible =
+    false;
+
+  /*
+  無反応
+  */
+  if (
+    !firstResponseRecorded
+  ) {
+    currentTrial.firstRT =
+      "";
+
+    currentTrial.correct =
+      0;
+
+    currentTrial.code =
+      4;
+  }
+
+  /*
+  代表反応
+  */
+  csvLog.push({
+    type:
+      "representative",
+    trial:
+      trialIndex + 1,
+    condition:
+      currentTrial.condition,
+    rt:
+      currentTrial.firstRT,
+    code:
+      currentTrial.code,
+    correct:
+      currentTrial.correct,
+    sortTime:
+      stimulusStartTime
+  });
+
+  trialIndex++;
+
+  if (
+    trialIndex >=
+    TOTAL_TRIALS
+  ) {
+    endTest();
+  } else {
+    showFixation();
+  }
+}
+
+
+/*
+==================================================
+時刻をHH:mm:ss形式に整形
+==================================================
+*/
+
+function formatTime(date) {
+  return (
+    String(
+      date.getHours()
+    ).padStart(2, "0") +
+    ":" +
+    String(
+      date.getMinutes()
+    ).padStart(2, "0") +
+    ":" +
+    String(
+      date.getSeconds()
+    ).padStart(2, "0")
+  );
+}
+
+
+/*
+==================================================
+CSV用エスケープ
+==================================================
+*/
+
+function csvEscape(value) {
+  const stringValue =
+    String(
+      value ?? ""
+    );
+
+  if (
+    stringValue.includes(
+      ","
+    ) ||
+    stringValue.includes(
+      '"'
+    ) ||
+    stringValue.includes(
+      "\n"
+    ) ||
+    stringValue.includes(
+      "\r"
+    )
+  ) {
+    return (
+      '"' +
+      stringValue.replace(
+        /"/g,
+        '""'
+      ) +
+      '"'
+    );
+  }
+
+  return stringValue;
+}
+
+
+function makeCsvRow(values) {
+  return values
+    .map(csvEscape)
+    .join(",");
+}
+
+
+/*
+==================================================
+タスク終了
+==================================================
+*/
+
+function endTest() {
+  if (!isRunning) {
+    return;
+  }
+
+  isRunning = false;
+  stimulusVisible = false;
+
+  clearTimeout(
+    fixationTimer
+  );
+
+  clearTimeout(
+    stimulusTimer
+  );
+
+  taskEndDate =
+    new Date();
+
+  /*
+  最終試行の追加押下は、
+  次の刺激がないためRTを空白にします。
+  */
+  pendingDuplicateResponses.forEach(
+    response => {
+      csvLog.push({
+        type:
+          "duplicate",
+        trial: "",
+        condition:
+          response.condition,
+        rt: "",
+        code: 5,
+        correct: "",
+        sortTime:
+          response.pressTime
+      });
+    }
+  );
+
+  pendingDuplicateResponses =
+    [];
+
+  csvLog.sort(
+    (a, b) =>
+      a.sortTime -
+      b.sortTime
+  );
+
+  /*
+  終了画面
+  */
+  hideAllScreenElements();
+
+  document.getElementById(
+    "title"
+  ).style.display =
+    "block";
+
+  const wordDiv =
+    document.getElementById(
+      "word"
+    );
+
+  wordDiv.style.display =
+    "flex";
+
+  setWordAppearance();
+
+  wordDiv.textContent =
+    "終了！";
+
+  wordDiv.style.color =
+    "black";
+
+  /*
+  条件別の総出現回数
+  */
+  const conditionCounts =
+    countConditions(
+      trialSequence
+    );
+
+  const totalRows =
+    Math.max(
+      csvLog.length + 1,
+      12
+    );
+
+  const outputRows =
+    Array.from(
+      {
+        length:
+          totalRows
+      },
+      () =>
+        Array(8).fill("")
+    );
+
+  /*
+  見出し
+  */
+  outputRows[0][0] =
+    "trial";
+
+  outputRows[0][1] =
+    "条件";
+
+  outputRows[0][2] =
+    "RT";
+
+  outputRows[0][3] =
+    "Code";
+
+  outputRows[0][4] =
+    "正誤";
+
+  outputRows[0][5] =
+    "Time";
+
+  outputRows[0][6] =
+    "Summary";
+
+  outputRows[0][7] =
+    "Count";
+
+  /*
+  試行データ
+  */
+  csvLog.forEach(
+    (
+      row,
+      index
+    ) => {
+      outputRows[
+        index + 1
+      ][0] =
+        row.trial;
+
+      outputRows[
+        index + 1
+      ][1] =
+        row.condition;
+
+      outputRows[
+        index + 1
+      ][2] =
+        row.rt;
+
+      outputRows[
+        index + 1
+      ][3] =
+        row.code;
+
+      outputRows[
+        index + 1
+      ][4] =
+        row.correct;
+    }
+  );
+
+  /*
+  開始・終了時刻
+  */
+  outputRows[1][5] =
+    formatTime(
+      taskStartDate
+    );
+
+  outputRows[2][5] =
+    formatTime(
+      taskEndDate
+    );
+
+  /*
+  条件別総出現回数
+  */
+  outputRows[1][6] =
+    "条件1";
+
+  outputRows[1][7] =
+    conditionCounts[1];
+
+  outputRows[2][6] =
+    "条件2";
+
+  outputRows[2][7] =
+    conditionCounts[2];
+
+  outputRows[3][6] =
+    "条件3";
+
+  outputRows[3][7] =
+    conditionCounts[3];
+
+  /*
+  Code対応表
+  */
+  outputRows[5][6] =
+    "Code";
+
+  outputRows[5][7] =
+    "区分";
+
+  outputRows[6][6] =
+    1;
+
+  outputRows[6][7] =
+    "正答（有効）";
+
+  outputRows[7][6] =
+    2;
+
+  outputRows[7][7] =
+    "誤答（有効）";
+
+  outputRows[8][6] =
+    3;
+
+  outputRows[8][7] =
+    "対象外（早期）";
+
+  outputRows[9][6] =
+    4;
+
+  outputRows[9][7] =
+    "対象外（無反応）";
+
+  outputRows[10][6] =
+    5;
+
+  outputRows[10][7] =
+    "対象外（重複）";
+
+  /*
+  CSV文字列
+  */
+  const csv =
+    "\uFEFF" +
+    outputRows
+      .map(makeCsvRow)
+      .join("\r\n");
+
+  const now =
+    new Date();
+
+  /*
+  ファイル名：
+  stroop_YYYYMMDD_HHMMSS.csv
+  */
+  const stamp =
+    String(
+      now.getFullYear()
+    ) +
+    String(
+      now.getMonth() + 1
+    ).padStart(2, "0") +
+    String(
+      now.getDate()
+    ).padStart(2, "0") +
+    "_" +
+    String(
+      now.getHours()
+    ).padStart(2, "0") +
+    String(
+      now.getMinutes()
+    ).padStart(2, "0") +
+    String(
+      now.getSeconds()
+    ).padStart(2, "0");
+
+  const blob =
+    new Blob(
+      [csv],
+      {
+        type:
+          "text/csv;charset=utf-8"
+      }
+    );
+
+  const url =
+    URL.createObjectURL(
+      blob
+    );
+
+  const link =
+    document.createElement(
+      "a"
+    );
+
+  link.href =
+    url;
+
+  link.download =
+    "stroop_" +
+    stamp +
+    ".csv";
+
+  document.body.appendChild(
+    link
+  );
+
+  link.click();
+  link.remove();
+
+  setTimeout(
+    () => {
+      URL.revokeObjectURL(
+        url
+      );
+    },
+    1000
+  );
+}
+
+
+/*
+==================================================
+ページ読み込み時
+==================================================
+*/
+
+showInitialScreen();
+</script>
+
+</body>
+</html>
